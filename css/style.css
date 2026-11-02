@@ -1,0 +1,25 @@
+html, body
+{
+    margin: 0;
+    padding: 0;
+}
+
+body
+{
+    position: fixed;
+    inset: 0;
+
+    display: grid;
+    justify-items: center;
+    align-items: center;
+}
+
+canvas
+{
+    outline: solid 1px;
+    background: currentColor;
+    
+    height: 90vh;
+    max-width: 90vw;
+    object-fit: contain;
+}
