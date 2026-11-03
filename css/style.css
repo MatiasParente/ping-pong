@@ -1,25 +1,93 @@
-html, body
-{
+* {
+    box-sizing: border-box;
+}
+
+html, body {
     margin: 0;
     padding: 0;
+    width: 100%;
+    height: 100%;
 }
 
-body
-{
-    position: fixed;
-    inset: 0;
+body {
+    background-color: #030814;
+    /* Imagen de fondo bien centrada con viñeta para destacar la cancha */
+    background-image: 
+    radial-gradient(circle at center, rgba(3, 10, 26, 0.55) 0%, rgba(2, 6, 16, 0.92) 100%),
+    url('../imagenes/Collage deportivo tricolor en estadio.png');
+    background-position: center center;
+    background-repeat: no-repeat;
+    background-size: cover;
+    background-attachment: fixed;
 
-    display: grid;
-    justify-items: center;
+    display: flex;
+    justify-content: center;
     align-items: center;
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    overflow: hidden;
 }
 
-canvas
-{
-    outline: solid 1px;
-    background: currentColor;
-    
-    height: 90vh;
-    max-width: 90vw;
+.contenedor-juego {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    position: relative;
+    max-width: 95vw;
+}
+
+.escudo {
+    height: 60px;
+    width: auto;
     object-fit: contain;
+    margin-bottom: 8px;
+    filter: drop-shadow(0 4px 10px rgba(0, 0, 0, 0.7));
+    transition: transform 0.2s ease;
+    user-select: none;
+}
+
+.escudo:hover {
+    transform: scale(1.06);
+}
+
+canvas {
+    display: block;
+    border-radius: 10px;
+    border: 3px solid rgba(255, 255, 255, 0.35);
+    box-shadow: 
+    0 12px 35px rgba(0, 0, 0, 0.8),
+    0 0 25px rgba(0, 45, 114, 0.45);
+    /* Proporción fija 4:3 para que la pelota no se deforme */
+    width: 800px;
+    max-width: 92vw;
+    max-height: 75vh;
+    aspect-ratio: 4 / 3;
+}
+
+.btn-juego {
+    margin-top: 10px;
+    padding: 8px 24px;
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    font-size: 14px;
+    font-weight: bold;
+    letter-spacing: 1px;
+    color: #ffffff;
+    background: linear-gradient(135deg, #002d72, #00183b);
+    border: 2px solid #c8102e;
+    border-radius: 6px;
+    cursor: pointer;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
+    transition: all 0.2s ease;
+    user-select: none;
+}
+
+.btn-juego:hover {
+    background: linear-gradient(135deg, #c8102e, #960018);
+    border-color: #ffffff;
+    transform: translateY(-2px);
+    box-shadow: 0 6px 18px rgba(200, 16, 46, 0.45);
+}
+
+.btn-juego:active {
+    transform: translateY(0);
 }

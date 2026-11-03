@@ -1,114 +1,167 @@
-console.log('Ping Pong');
+console.log('Ping Pong - Club Nacional de Football');
 
-//obtenemos el canvas, lo mantenemos del breakout ya que quiero usar la misma lógica del juego
+// Obtenemos el canvas y su contexto
 const lienzo = document.getElementById('lienzo');
-//obtenemos el contexto del lienzo, ctx es con lo que dibujamos todo
 const ctx = lienzo.getContext('2d');
-
-//obtenemos el ancho y el alto del lienzo
 const { width, height } = lienzo;
+
+// Botón de inicio
+const btnIniciar = document.getElementById('btnIniciar');
+
+// Define los límites donde se mueven las entidades (debajo del marcador superior)
+const area = {
+    x1: 0, 
+    y1: 36,
+    x2: width, 
+    y2: height,
+};
 
 let juegoIniciado = false;
 let juegoFinalizado = false;
 
-//colores del club Nacional de football
-//cambie los colores para que sean los del bolso
+// Variables para la espera de 2 segundos tras un gol
+let tiempoEsperaGol = 0;
+let mensajeGol = '';
+
+// Colores del Club Nacional de Football
 const colores = [
-    '#ffffff',
-    '#ff0000',
-    '#0000ff',
-    '#00005f',
-    '#CF0028',
-    '#000000'
+    '#ffffff', // 0: Blanco
+    '#ff0000', // 1: Rojo
+    '#002d72', // 2: Azul Nacional
+    '#00183b', // 3: Azul Oscuro tablero
+    '#CF0028', // 4: Rojo Tricolor
+    '#000000'  // 5: Negro
 ];
 
-//limpia el canvas
-function cls ()
+// -------------------------------------------------------------
+// PRE-CARGA DE IMÁGENES
+// -------------------------------------------------------------
+const imgPelota = new Image();
+imgPelota.src = 'imagenes/pelota.png';
+
+const imgEscudo = new Image();
+imgEscudo.src = 'imagenes/Escudo_del_Club_Nacional_de_Football.svg.png';
+
+// Imágenes para los Power-ups
+const imgMejia = new Image();
+imgMejia.src = 'imagenes/mejia.jpg';
+
+const imgMaxi = new Image();
+imgMaxi.src = 'imagenes/maxi.jpeg';
+
+const imgVillalba = new Image();
+imgVillalba.src = 'imagenes/villalba.jpg';
+
+// -------------------------------------------------------------
+// SISTEMA DE AUDIO ORIGINAL (Exacto al original)
+// -------------------------------------------------------------
+function sonido (ind = 0)
 {
-    ctx.clearRect(0, 0, width, height); //borramos todo
-    rectFill(0, 0, width, height, 3); //pintamos el fondo de color negro
+    const t = (i, n) => (n - i) / n;
+
+    const sonidos = [
+        // 0: Choque
+        i => Math.sin(i / 20) * Math.exp(-i / 300), 
+        
+        // 1: Gol
+        i => (Math.random() * 2 - 1) * Math.exp(-i/1e4),
+    ];
+
+    const f = sonidos[ ind ];
+    
+    const A = new AudioContext();
+    const m = A.createBuffer(1, 96e3, 48e3);
+    const b = m.getChannelData(0);
+
+    for (let i=96e3; i--;)
+    {
+        b[i] = f(i);
+    }
+
+    const s = A.createBufferSource();
+    
+    s.buffer = m;
+    s.connect(A.destination);
+    s.start();
 }
 
-//numero aleatorio entre 0 y max, sirve para la pelota al iniciar
+// Limpia el canvas
+function cls ()
+{
+    ctx.clearRect(0, 0, width, height);
+}
+
+// Número aleatorio entre 0 y max
 function rnd (max)
 {
     return Math.random() * max;
 }
 
-//dibuja un rectangulo para los jugadores
+// Dibuja un rectángulo coloreado
 function rectFill (x1, y1, x2, y2, color)
 {
     ctx.fillStyle = colores[ color ];
     ctx.fillRect(
         x1, y1,
-        Math.max(x1, x2) - Math.min(x1, x2), //calcula el ancho del rectangulo
-        Math.max(y1, y2) - Math.min(y1, y2) //calcula el alto del rectangulo
+        Math.max(x1, x2) - Math.min(x1, x2),
+        Math.max(y1, y2) - Math.min(y1, y2)
     );
 }
 
-//dibujamos un circulo para la pelota
+// Dibuja un círculo coloreado
 function circFill (x, y, r, color)
 {
-    ctx.fillStyle = colores[ color ]; //color de la pelota
-
-    ctx.beginPath(); //iniciamos el dibujo de un circulo
+    ctx.fillStyle = colores[ color ];
+    ctx.beginPath();
     ctx.arc(x, y, r, 0, Math.PI * 2);
     ctx.fill();
 }
 
-//txt=texto, x/y=posición, c=índice de color, font=tipografía,
-// align=alineación horizontal ('left','center','right'), baseline=alineación vertical
-function print (txt, x, y, c, font = 'bold 30px sans', align = 'left', 
-baseline = 'top')
+// Escribe texto en el lienzo con alineación explícita
+function print (txt, x, y, c, font = 'bold 30px sans', align = 'left', baseline = 'top')
 {
     ctx.font = font;
     ctx.textAlign = align;
     ctx.textBaseline = baseline;
     ctx.fillStyle = colores[ c ];
-
     ctx.fillText(txt, x, y);
 }
 
-//detecta colisiones entre dos entidades usando AABB (Axis-Aligned Bounding Box)
+// Detecta colisiones entre dos entidades usando AABB
 function colision (a, b)
 {
     return !(
-        a.x + a.hitbox.x1 > b.x + b.hitbox.x2 //si la pelota esta a la derecha de la paleta
-        || a.x + a.hitbox.x2 < b.x + b.hitbox.x1 //si la pelota esta a la izquierda de la paleta
-        || a.y + a.hitbox.y1 > b.y + b.hitbox.y2 //si la pelota esta abajo de la paleta
-        || a.y + a.hitbox.y2 < b.y + b.hitbox.y1 //si la pelota esta arriba de la paleta
+        a.x + a.hitbox.x1 > b.x + b.hitbox.x2
+        || a.x + a.hitbox.x2 < b.x + b.hitbox.x1
+        || a.y + a.hitbox.y1 > b.y + b.hitbox.y2
+        || a.y + a.hitbox.y2 < b.y + b.hitbox.y1
     );
 }
 
-//detecta cuando se presiona una tecla
-//hace uso del patron singleton
+// Lee el estado de los controles
 function btn (boton)
 {
     const i = Control.getInstance();
-    return i[ boton ];  // accede a la propiedad por nombre, ej: i['up'] = i.up
+    return i[ boton ];
 }
 
-// Flechas arriba/abajo del Jugador 1 
-// W/S del Jugador 2
+// Manejador singleton de teclado
 class Control
 {
-    // garantiza que solo exista UNA instancia de Control
     static instance = null;
 
-    // cada uno es true cuando la tecla está presionada, false cuando se suelta
     up = false;
     down = false;
     x = false;
     o = false;
-    g = false; //para iniciar el juego
-    w = false; //para el jugador 2
-    s = false; //para el jugador 2
+    g = false;
+    w = false;
+    s = false;
 
-    //constructor del singleton, solo se puede crear una instancia
     constructor ()
     {
-        window.addEventListener('keyup',    this.manageControl.bind(this)); //detecta cuando se suelta una tecla
-        window.addEventListener('keydown',  this.manageControl.bind(this)); //detecta cuando se presiona una tecla
+        window.addEventListener('keyup',    this.manageControl.bind(this));
+        window.addEventListener('keydown',  this.manageControl.bind(this));
     }
 
     static getInstance ()
@@ -117,60 +170,53 @@ class Control
         {
             Control.instance = new Control();
         }
-
         return Control.instance;
     }
 
-    //maneja el control de las teclas
     manageControl (evt)
     {
         const presionando = evt.type == 'keydown';
 
         switch (evt.code)
         {
-            case 'ArrowUp': //jugador 1
+            case 'ArrowUp':
                 this.up = presionando;
                 break;
-                
-            case 'ArrowDown': //jugador 1
+            case 'ArrowDown':
                 this.down = presionando;
                 break;
-                
-            case 'KeyW': //jugador 2
+            case 'KeyW':
                 this.w = presionando;
                 break;
-                
-            case 'KeyS': //jugador 2 
+            case 'KeyS':
                 this.s = presionando;
                 break;
-                
             case 'KeyZ':
                 this.o = presionando;
                 break;
-                
             case 'KeyX':
                 this.x = presionando;
                 break;
-
-            case 'KeyG': //para iniciar el juego
+            case 'KeyG':
                 this.g = presionando;
                 break;
-
         }
     }
 }
 
+// Efecto de cámara y sacudida
 class Camara 
 {
-    #x = 0;// desplazamiento horizontal actual
-    #y = 0;// desplazamiento vertical actual
-    #shake = 0;// frames restantes de vibración
+    #x = 0;
+    #y = 0;
+    #shake = 0;
 
     static #instancia = null;
 
     constructor ()
     {
-        this.overlayColor = colores[4]; //color que aparece al vibrar
+        // Tinte suave semitransparente para que no tape la pantalla por completo
+        this.overlayColor = 'rgba(207, 0, 40, 0.25)';
     }
 
     static getInstance ()
@@ -179,119 +225,68 @@ class Camara
         {
             Camara.#instancia = new Camara();
         }
-
         return Camara.#instancia;
     }
 
-    // Las propiedades con # son privadas
-    get x ()
-    {
-        return this.#x;
-    }
+    get x () { return this.#x; }
+    set x (valor) { this.#x = valor; return this.#x; }
+    get y () { return this.#y; }
+    set y (valor) { this.#y = valor; return this.#y; }
 
-    set x (valor)
-    {
-        this.#x = valor;
-        return this.#x;
-    }
-
-    get y ()
-    {
-        return this.#y;
-    }
-
-    set y (valor)
-    {
-        this.#y = valor;
-        return this.#y;
-    }
-
-    //temblor de la camara, activa la vibración por N frames
     shake (frames)
     {
         this.#shake = frames;
-        overlays.push(this.overlayColor); //agrega el flash rojo encima
+        overlays.push(this.overlayColor);
     }
 
-    //actualiza la camara, se llama cada frame desde draw()
     update ()
     {
         if (this.#shake > 0)
         {
-            this.#shake--;//resta un frame de vibración
-
-            this.x = Math.random() * 20 - 10;//Mueve la cámara a una posición aleatoria entre -10 y +10 en cada eje
-            this.y = Math.random() * 20 - 10;
+            this.#shake--;
+            this.x = Math.random() * 16 - 8;
+            this.y = Math.random() * 16 - 8;
         }
         else
         {
-            this.x = 0;//Sin shake, cámara quieta en 0,0
+            this.x = 0;
             this.y = 0;
-
-            const ind = overlays.indexOf(this.overlayColor);//Quita el overlay rojo del array
-            overlays.splice(ind, 1);
+            const ind = overlays.indexOf(this.overlayColor);
+            if (ind !== -1) overlays.splice(ind, 1);
         }
     }
 }
 
-//clase base para todas las entidades
+// Clase base para entidades
 class Entidad
 {
-    // Todas las entidades creadas se guardan acá automáticamente
-    static entidades = []; //static, o sea que pertenece a la CLASE, no a cada objeto
+    static entidades = [];
 
-    #x = 0;//posicion x
-    #y = 0;//posicion y
-    #width = 0;//ancho
-    #height = 0;//alto
+    #x = 0;
+    #y = 0;
+    #width = 0;
+    #height = 0;
 
-    //constructor de la entidad
     constructor ()
     {
-        this.color = 0; // índice de color de la paleta
+        this.color = 0;
+        this.dx = 0;
+        this.dy = 0;
 
-        this.dx = 0;  // velocidad horizontal (positivo = derecha, negativo = izquierda)
-        this.dy = 0;  // velocidad vertical (positivo = abajo, negativo = arriba)
-
-        // x1,y1 = esquina superior izquierda del hitbox
-        // x2,y2 = esquina inferior derecha del hitbox
         this.hitbox = {
             x1: 0, y1: 0, x2: 0, y2: 0
         };
 
-        //agrega la entidad a la lista de entidades automáticamente al crearse
         Entidad.entidades.push(this);
     }
 
-    // Getters y setters — controlan cómo se lee/escribe x, y, width, height
-    get x ()
-    {
-        return this.#x;
-    }
+    get x () { return this.#x; }
+    set x (valor) { this.#x = valor; return this.#x; }
 
-    set x (valor)
-    {
-        this.#x = valor;
-        return this.#x;
-    }
+    get y () { return this.#y; }
+    set y (valor) { this.#y = valor; return this.#y; }
 
-    get y ()
-    {
-        return this.#y;
-    }
-
-    set y (valor)
-    {
-        this.#y = valor;
-        return this.#y;
-    }
-
-    get width ()
-    {
-        return this.#width;
-    }
-
-    // Cuando asignás width, automaticamente actualiza hitbox.x2
+    get width () { return this.#width; }
     set width (valor)
     {
         this.#width = valor;
@@ -299,39 +294,28 @@ class Entidad
         return this.#width;
     }
 
-    get height ()
-    {
-        return this.#height;
-    }
-
-    // al asignar height, actualiza hitbox.y2
+    get height () { return this.#height; }
     set height (valor)
     {
         this.#height = valor;
         this.hitbox.y2 = valor;
-
         return this.#height;
     }
 
-    // las clases hijas lo sobreescriben
     control () {}
 
     update ()
     {
         this.control();
 
-        // Aplica velocidad para mover la entidad
         this.x += this.dx;
         this.y += this.dy;
 
-        //si la entidad no tiene vida, se elimina sola
         if (this.vida <= 0)
         {
-            // Quitar entidad de la lista de entidades
             const ind = Entidad.entidades.indexOf(this);
-            Entidad.entidades.splice(ind, 1);
+            if (ind !== -1) Entidad.entidades.splice(ind, 1);
 
-            // Si la entidad tiene un método onDeath, lo ejecuta
             if (this.onDeath !== undefined)
             {
                 this.onDeath();
@@ -339,7 +323,6 @@ class Entidad
         }
     }
 
-    // un rectángulo del tamaño de la entidad
     draw ()
     {
         rectFill(
@@ -351,43 +334,40 @@ class Entidad
     }
 }
 
+// Clase para las paletas de los jugadores con diseño Tricolor
 class Jugador extends Entidad
 {
-    constructor (teclaArriba, teclaAbajo, posX)
+    constructor (teclaArriba, teclaAbajo, posX, esLocal = true)
     {
         super();
 
-        this.width = 20;   
-        this.height = 120;  
+        this.width = 18;   
+        this.height = 110;  
         this.color = 0;
+        this.esLocal = esLocal; // true para Jugador 1 (Nacional), false para Jugador 2 (Rival)
 
-        // Guardar teclas para usar despues
         this.tecArriba = teclaArriba;
         this.tecAbajo = teclaAbajo;
-
-        //Guardar posición inicial
         this.posInicialX = posX;
         
-        // Posicionar al jugador
         this.x = posX;
         this.y = area.y1 + (area.y2 - area.y1) / 2 - this.height / 2;
         this.vel = 5;
         this.puntos = 0; 
     }
 
-    // lee el teclado y mueve la paleta
     control ()
     {
-        this.dy = 0;  // resetea velocidad
+        this.dy = 0;
 
         if (btn(this.tecArriba)) this.dy = -this.vel;
         if (btn(this.tecAbajo)) this.dy = this.vel;
         
-        // evita que la paleta salga del área
+        // Evita que la paleta salga de los límites del campo
         if (this.y < area.y1)
         {
             this.y = area.y1;
-            this.dy = 0
+            this.dy = 0;
         }
 
         if (this.y > area.y2 - this.height)
@@ -397,38 +377,62 @@ class Jugador extends Entidad
         }
     }
 
-    //reinicia la posicion del jugador
     reset ()
     {
         this.x = this.posInicialX;
         this.y = area.y1 + (area.y2 - area.y1) / 2 - this.height / 2;
     }
 
+    draw ()
+    {
+        ctx.save();
+        const r = 5;
+
+        // Fondo de la paleta
+        ctx.fillStyle = this.esLocal ? '#002d72' : '#c8102e';
+        ctx.beginPath();
+        if (ctx.roundRect) {
+            ctx.roundRect(this.x, this.y, this.width, this.height, r);
+        } else {
+            ctx.rect(this.x, this.y, this.width, this.height);
+        }
+        ctx.fill();
+
+        // Borde blanco nítido
+        ctx.strokeStyle = '#ffffff';
+        ctx.lineWidth = 2;
+        ctx.stroke();
+
+        // Franja tricolor central en la paleta
+        ctx.fillStyle = this.esLocal ? '#c8102e' : '#002d72';
+        const franjaW = 4;
+        const franjaX = this.x + (this.width - franjaW) / 2;
+        ctx.fillRect(franjaX, this.y + 12, franjaW, this.height - 24);
+
+        ctx.restore();
+    }
 }
 
-//para los resultados
+// Cartel para final de partida
 class Cartel extends Entidad
 {
-    constructor (txt /*String*/, fg /*Int*/, bg /*Int*/)
+    constructor (txt, fg, bg)
     {
         super();
 
         this.x = 0;
-        this.y = height / 3;// un tercio de la pantalla
+        this.y = height / 3;
         this.height = this.y;      
         this.width = width;        
 
         this.txt = txt;
-        this.color = fg;// color del texto
-        this.bg = bg; // color del fondo del cartel
-
-        // overlays.push('#000a');
+        this.color = fg;
+        this.bg = bg;
     }
 
-    // Sobreescribe el draw() de Entidad con su propio dibujo
     draw ()
     {
-        ctx.fillStyle = '#000a';
+        ctx.fillStyle = 'rgba(0, 0, 0, 0.75)';
         ctx.fillRect(
             area.x1, area.y1,
             area.x2 - area.x1,
@@ -442,13 +446,184 @@ class Cartel extends Entidad
         );
 
         print(
-            this.txt, this.x + this.width / 2, this.y + this.height / 2, 
-            this.color, 'bold 40px sans', 'center', 'center'
+            this.txt, this.x + this.width / 2, this.y + this.height / 2 - 10, 
+            this.color, 'bold 36px sans', 'center', 'center'
+        );
+
+        print(
+            'Presiona "G" o el botón para jugar de nuevo', this.x + this.width / 2, this.y + this.height / 2 + 30, 
+            0, 'bold 18px sans', 'center', 'center'
         );
     }
 }
 
-//clase de la pelota
+// -------------------------------------------------------------
+// CONTROLADORES DE POWER-UPS Y ESTADO
+// -------------------------------------------------------------
+let timeoutEfectoPowerUp = null;
+let mensajePowerUp = '';
+let tiempoMensajePowerUp = 0;
+
+// Cantidad máxima de power-ups que pueden estar en pantalla a la vez
+const MAX_POWERUPS = 1;
+
+function mostrarMensajePowerUp (texto)
+{
+    mensajePowerUp = texto;
+    tiempoMensajePowerUp = 180; // 3 segundos en pantalla
+}
+
+function limpiarEfectosPowerUp ()
+{
+    if (timeoutEfectoPowerUp)
+    {
+        clearTimeout(timeoutEfectoPowerUp);
+        timeoutEfectoPowerUp = null;
+    }
+    p.congelada = false;
+    p.enTurbo = false;
+    mensajePowerUp = '';
+    tiempoMensajePowerUp = 0;
+}
+
+// clase para las habilidades
+class PowerUp extends Entidad
+{
+    constructor (tipo, x, y)
+    {
+        super();
+        this.tipo = tipo; // mejia, maxi, villalba
+        this.x = x;
+        this.y = y;
+        this.width = 46;
+        this.height = 46;
+        this.hitbox = { x1: 2, y1: 2, x2: 44, y2: 44 };
+        this.vida = 1;
+
+        if (tipo === 'mejia') this.img = imgMejia;
+        else if (tipo === 'maxi') this.img = imgMaxi;
+        else if (tipo === 'villalba') this.img = imgVillalba;
+    }
+
+    activar (pelota)
+    {
+        sonido(0);
+
+        if (this.tipo === 'mejia')
+        {
+            // la pelota se congela por 3 segundos
+            limpiarEfectosPowerUp();
+            // Guardamos la velocidad previa
+            const vxGuardada = pelota.dx || (pelota.x < width / 2 ? 4.5 : -4.5);
+            const vyGuardada = pelota.dy || 2;
+
+            pelota.congelada = true;
+            pelota.dx = 0;
+            pelota.dy = 0;
+            mostrarMensajePowerUp('¡ATAJA MEJIA (3s)!');
+
+            timeoutEfectoPowerUp = setTimeout(() => {
+                pelota.dx = vxGuardada;
+                pelota.dy = vyGuardada;
+                pelota.congelada = false;
+                timeoutEfectoPowerUp = null;
+            }, 3000);
+        }
+        else if (this.tipo === 'maxi')
+        {
+            // tiro potente hacia adelante
+            limpiarEfectosPowerUp();
+            const dirX = Math.sign(pelota.dx) || (pelota.x < width / 2 ? 1 : -1);
+            pelota.dx = dirX * 12;
+            pelota.dy = (Math.random() * 6 - 3); // direccion frontal
+            mostrarMensajePowerUp('¡TIRO DE MAXI!');
+        }
+        else if (this.tipo === 'villalba')
+        {
+            // la habilidad de villalba hace que vaya la pelota mas rapido por pocos segundos
+            limpiarEfectosPowerUp();
+            pelota.enTurbo = true;
+            pelota.dx *= 1.8;
+            pelota.dy *= 1.8;
+            mostrarMensajePowerUp('¡VELOCIDAD DE VILLALBA (5s)!');
+
+            timeoutEfectoPowerUp = setTimeout(() => {
+                pelota.dx /= 1.8;
+                pelota.dy /= 1.8;
+                pelota.enTurbo = false;
+                timeoutEfectoPowerUp = null;
+            }, 5000);
+        }
+
+        this.vida = 0; //se elimina de la cancha
+    }
+
+    draw ()
+    {
+        const cx = this.x + this.width / 2;
+        const cy = this.y + this.height / 2;
+        const r = this.width / 2;
+
+        ctx.save();
+
+        // Resplandor exterior característico de cada power-up
+        ctx.beginPath();
+        ctx.arc(cx, cy, r + 4, 0, Math.PI * 2);
+        if (this.tipo === 'mejia') ctx.fillStyle = '#00f0ff'; //hielo
+        else if (this.tipo === 'maxi') ctx.fillStyle = '#ff3b30'; //tiro potente
+        else ctx.fillStyle = '#ffcc00'; // velocidad villalba
+        ctx.fill();
+
+        // Borde blanco
+        ctx.beginPath();
+        ctx.arc(cx, cy, r + 1, 0, Math.PI * 2);
+        ctx.fillStyle = '#ffffff';
+        ctx.fill();
+
+        //recorte circular de la imagen del jugador
+        ctx.beginPath();
+        ctx.arc(cx, cy, r, 0, Math.PI * 2);
+        ctx.clip();
+
+        if (this.img && this.img.complete && this.img.naturalWidth !== 0) {
+            ctx.drawImage(this.img, cx - r, cy - r, this.width, this.height);
+        } else {
+            ctx.fillStyle = colores[2];
+            ctx.fillRect(cx - r, cy - r, this.width, this.height);
+        }
+
+        ctx.restore();
+    }
+}
+
+// generador de powerups
+let contadorSpawnPowerUp = 0;
+function gestionarPowerUps ()
+{
+    // No generar si el juego no empezó, si terminó o si estamos en pausa tras un gol
+    if (!juegoIniciado || juegoFinalizado || tiempoEsperaGol > 0) return;
+
+    //limite de powerups a la vez
+    const cantidadActual = Entidad.entidades.filter(e => e instanceof PowerUp).length;
+    if (cantidadActual >= MAX_POWERUPS) return;
+
+    contadorSpawnPowerUp++;
+    // aparecen aproximadamente cada 8 segundos
+    if (contadorSpawnPowerUp >= 480)
+    {
+        contadorSpawnPowerUp = 0;
+        const tipos = ['mejia', 'maxi', 'villalba'];
+        const tipoElegido = tipos[Math.floor(Math.random() * tipos.length)];
+
+        // Coordenadas aleatorias en la la cancha
+        const posX = 240 + Math.random() * 320;
+        const posY = area.y1 + 45 + Math.random() * (area.y2 - area.y1 - 100);
+
+        new PowerUp(tipoElegido, posX, posY);
+    }
+}
+
+//clase pelota
 class Pelota extends Entidad
 {
     constructor ()
@@ -457,108 +632,117 @@ class Pelota extends Entidad
 
         this.width = 30;
         this.height = this.width;
-        this.color = 1;
-
+        this.color = 0;
 
         this.hitbox = {
-            x1: 3, y1: 3, x2: 27, y2: 27
+            x1: 2, y1: 2, x2: 28, y2: 28
         };
-        this.vel = 4;
+        this.vel = 4.5;
+        this.rotacion = 0;
+        this.congelada = false;
+        this.enTurbo = false;
     }
 
     control ()
     {
-        // Si el juego terminó y se presiona G, reiniciar todo
-        if(juegoFinalizado && btn('g')){
-            juegoFinalizado = false;
-            juegoIniciado = false;
-            j.puntos = 0;
-            j2.puntos = 0;
-            // Eliminar carteles
-            Entidad.entidades = Entidad.entidades.filter(e => !(e instanceof Cartel));
-            reset();
-            return;
-        }
-
-        // Si la pelota está quieta y se presiona G (o ya se inició la partida), lanzar
-        if(this.dx === 0 && this.dy === 0 && !juegoFinalizado && (btn('g') || juegoIniciado)){
-            juegoIniciado = true;
-            // Dirección horizontal aleatoria (izquierda o derecha)
-            const dirX = Math.random() > 0.5 ? 1 : -1;
-            // Ángulo vertical aleatorio
-            const dirY = (Math.random() * 1.4 - 0.7);
-            this.dx = dirX * this.vel;
-            this.dy = dirY * this.vel;
-        }
-
-        // Si algún jugador llego a 10 puntos, detener la pelota
-        if (j.puntos >= 10 || j2.puntos >= 10)
+        // reiniciar juego si termino al precionar g
+        if (juegoFinalizado && btn('g'))
         {
-            this.dx = 0;
-            this.dy = 0;
-
-            // Solo mostrar el cartel UNA vez
-            if(!juegoFinalizado){
-                juegoFinalizado = true;
-                juegoIniciado = false;
-                if (j.puntos >= 10) new Cartel("Gano el jugador 1", 4, 2);
-                else new Cartel("Gano el jugador 2", 2, 4);
-            }
-
+            iniciarOSacar();
             return;
         }
 
+        //pausa obligatoria de 2 segundos cuando se hace un gol
+        if (tiempoEsperaGol > 0)
+        {
+            tiempoEsperaGol--;
+            const segsRestantes = Math.ceil(tiempoEsperaGol / 60);
+            mensajePowerUp = `${mensajeGol}, reanudando en ${segsRestantes}...`;
+            tiempoMensajePowerUp = 2;
+
+            if (tiempoEsperaGol === 0)
+            {
+                mensajePowerUp = '';
+                tiempoMensajePowerUp = 0;
+                lanzarPelota();
+            }
+            return; // Mientras espera los 2 segundos la pelota permanece inmóvil
+        }
+
+        // si la pelota está congelada por mejia
+        if (this.congelada)
+        {
+            return;
+        }
+
+        // si la pelota está quieta y se presiona G o botón para sacar
+        if (this.dx === 0 && this.dy === 0 && !juegoFinalizado && (btn('g') || juegoIniciado))
+        {
+            lanzarPelota();
+        }
+
+        // Rotación de la pelota
+        if (this.dx !== 0 && !this.congelada) {
+            this.rotacion += this.dx * 0.05;
+        }
+
+        // Gol del J2
         if (this.x <= area.x1)
         {
             j2.puntos += 1;   
             sonido(1);  
-            Camara.getInstance().shake(30); 
-
-            reset(); 
+            Camara.getInstance().shake(20); 
+            anotarGol("¡GOL DEL RIVAL!");
+            return;
         }
 
-        if(this.x >= area.x2 - this.width)
+        // Gol del J1
+        if (this.x >= area.x2 - this.width)
         {
             j.puntos += 1;   
             sonido(1);  
-            Camara.getInstance().shake(30); 
-
-            reset(); 
+            Camara.getInstance().shake(20); 
+            anotarGol("¡GOL DE NACIONAL!");
+            return;
         }
 
+        // Rebotes en paredes superior e inferior
         if (this.y <= area.y1)
         {
-            this.dy *= -1;
-        }
-
-        for (const e of Entidad.entidades)
-        {
-            // ¿La entidad a verificar es la pelota?
-            if (e === this)
-            {
-                // Nos saltamos el resto
-                continue;
-            }
-
-            if (colision(this, e)) this.onColision(e);
+            this.dy = Math.abs(this.dy);
         }
 
         if (this.y >= area.y2 - this.height)
         {
-            this.dy *= -1;                        
+            this.dy = -Math.abs(this.dy);                        
+        }
+
+        // Colisión con otras entidades
+        for (const e of Entidad.entidades)
+        {
+            if (e === this) continue;
+
+            // Colisión con habilidad
+            if (e instanceof PowerUp && colision(this, e))
+            {
+                e.activar(this);
+                continue;
+            }
+
+            // Colisión con paleta
+            if (colision(this, e)) this.onColision(e);
         }
     }
 
-    // Reinicia la pelota al centro
     reset ()
     {
-        // Centrado al medio del ÁREA de juego (no de la pantalla)
         this.x = area.x1 + (area.x2 - area.x1) / 2 - this.width / 2;
         this.y = area.y1 + (area.y2 - area.y1) / 2 - this.height / 2;
-
-        // Detener la pelota
         this.dx = 0;
         this.dy = 0;   
+        this.vel = 4.5; // restablecer velocidad con el gol
+        this.congelada = false;
+        this.enTurbo = false;
     }
 
     onColision (entidad)
@@ -583,7 +767,15 @@ class Pelota extends Entidad
 
         this.x += dx_actual; 
 
-        sonido(0); // sonido de rebote
+        // para que aumente la velocidad
+        if (entidad instanceof Jugador && !this.enTurbo && !this.congelada)
+        {
+            this.dx *= 1.05;
+            this.dy *= 1.05;
+        }
+
+        // Sonido de rebote
+        sonido(0); 
 
         if (entidad.onColision !== undefined)
         {
@@ -593,77 +785,194 @@ class Pelota extends Entidad
 
     draw ()
     {
-        circFill(
-            this.x + this.width / 2,
-            this.y + this.height / 2,
-            this.width / 2,
-            this.color
-        );
+        ctx.save();
+        ctx.translate(this.x + this.width / 2, this.y + this.height / 2);
 
-        /*
-        ctx.strokeStyle = colores[ 11 ];
-        ctx.strokeRect(
-            this.x + this.hitbox.x1,
-            this.y + this.hitbox.y1,
-            this.hitbox.x2 - this.hitbox.x1,
-            this.hitbox.y2 - this.hitbox.y1
-        )
-        */
+        //habilidad de congelacion de mejia
+        if (this.congelada)
+        {
+            ctx.beginPath();
+            ctx.arc(0, 0, this.width / 2 + 6, 0, Math.PI * 2);
+            ctx.fillStyle = 'rgba(0, 240, 255, 0.6)';
+            ctx.fill();
+        }
+        //habilidad de villalba cuando esta activa
+        if (this.enTurbo)
+        {
+            ctx.beginPath();
+            ctx.arc(0, 0, this.width / 2 + 5, 0, Math.PI * 2);
+            ctx.fillStyle = 'rgba(255, 204, 0, 0.6)';
+            ctx.fill();
+        }
+
+        ctx.rotate(this.rotacion);
+
+        if (imgPelota.complete && imgPelota.naturalWidth !== 0) {
+            ctx.drawImage(imgPelota, -this.width / 2, -this.height / 2, this.width, this.height);
+        } else {
+            ctx.fillStyle = colores[0];
+            ctx.beginPath();
+            ctx.arc(0, 0, this.width / 2, 0, Math.PI * 2);
+            ctx.fill();
+        }
+
+        ctx.restore();
     }
 }
 
-//colores que se dibujan encima de todo
+// Overlays para la cámara
 const overlays = [];
 
-// Genera sonidos sin archivos de audio, todo con matemáticas
-function sonido (ind = 0)
+//para cuando hacemos gol y que espere los 2 segundos
+function anotarGol (mensaje)
 {
-    const t = (i, n) => (n - i) / n;
-
-    const sonidos = [
-        // 0: Choque
-        i => Math.sin(i / 20) * Math.exp(-i / 300), 
-        
-        // 1: Gol
-        i => (Math.random() * 2 - 1) * Math.exp(-i/1e4),
-    ];
-
-    const f = sonidos[ ind ];
-    
-    const A = new AudioContext();
-    const m = A.createBuffer(1, 96e3, 48e3);
-    const b = m.getChannelData(0);
-
-    for (let i=96e3; i--;)
+    // Si algun jugador llego a 10 puntos termina el partido
+    if (j.puntos >= 10 || j2.puntos >= 10)
     {
-        b[i] = f(i);
+        p.dx = 0;
+        p.dy = 0;
+        juegoFinalizado = true;
+        juegoIniciado = false;
+        actualizarBotonIniciar();
+        limpiarEfectosPowerUp();
+        if (j.puntos >= 10) new Cartel("¡GANÓ NACIONAL!", 0, 2);
+        else new Cartel("¡GANÓ EL RIVAL!", 0, 4);
+        return;
     }
 
-    // Crea un nodo fuente, le asigna el buffer, lo conecta a la salida y reproduce
-    const s = A.createBufferSource();
-    
-    s.buffer = m;
-    s.connect(A.destination);
-    s.start();
+    // Reinicia posiciones de pelota y paletas al centro
+    reset();
+
+    //cuenta de espera de 2 segundos
+    tiempoEsperaGol = 120;
+    mensajeGol = mensaje;
 }
 
-// Dibuja la línea central punteada (se llama ANTES de las entidades para que la pelota quede encima)
-function lineaCentral ()
+// Disparo de la pelota
+function lanzarPelota ()
 {
-    const centroX = width / 2;
-    const cantidadSegmentos = 20;
-    const altoTotal = area.y2 - area.y1;
-    const altoSegmento = altoTotal / (cantidadSegmentos * 2);
-    for (let i = 0; i < cantidadSegmentos; i++)
-    {
-        const yPos = area.y1 + i * altoSegmento * 2;
-        rectFill(centroX - 2, yPos, centroX + 2, yPos + altoSegmento, 0); 
-    }
+    juegoIniciado = true;
+    actualizarBotonIniciar();
+    const dirX = Math.random() > 0.5 ? 1 : -1;
+    const dirY = (Math.random() * 1.4 - 0.7);
+    p.dx = dirX * p.vel;
+    p.dy = dirY * p.vel;
 }
 
+// Dibuja la cancha de fútbol
+function dibujaCancha ()
+{
+    const altoCampo = area.y2 - area.y1;
+
+    // Césped
+    const franjas = 10;
+    const anchoFranja = width / franjas;
+    for (let i = 0; i < franjas; i++) {
+        ctx.fillStyle = (i % 2 === 0) ? '#1f6e3a' : '#195c30';
+        ctx.fillRect(i * anchoFranja, area.y1, anchoFranja, altoCampo);
+    }
+
+    // Coordenadas
+    const margenX = 18;
+    const margenY = 16;
+    const fx1 = margenX;
+    const fy1 = area.y1 + margenY;
+    const fx2 = width - margenX;
+    const fy2 = area.y2 - margenY;
+    const centerX = width / 2;
+    const centerY = fy1 + (fy2 - fy1) / 2;
+
+    //Escudo en el centro de la cancha
+    if (imgEscudo.complete && imgEscudo.naturalWidth !== 0) {
+        ctx.save();
+        ctx.globalAlpha = 0.16;
+        const tamEscudo = 125;
+        ctx.drawImage(imgEscudo, centerX - tamEscudo / 2, centerY - tamEscudo / 2, tamEscudo, tamEscudo);
+        ctx.restore();
+    }
+
+    //Lineas blancas de la cancha
+    ctx.strokeStyle = 'rgba(255, 255, 255, 0.75)';
+    ctx.lineWidth = 2.5;
+
+    // Perimetro
+    ctx.strokeRect(fx1, fy1, fx2 - fx1, fy2 - fy1);
+
+    //Linea de medio campo
+    ctx.beginPath();
+    ctx.moveTo(centerX, fy1);
+    ctx.lineTo(centerX, fy2);
+    ctx.stroke();
+
+    // Círculo central
+    ctx.beginPath();
+    ctx.arc(centerX, centerY, 65, 0, Math.PI * 2);
+    ctx.stroke();
+
+    // Punto central de saque
+    ctx.beginPath();
+    ctx.arc(centerX, centerY, 4, 0, Math.PI * 2);
+    ctx.fillStyle = 'rgba(255, 255, 255, 0.85)';
+    ctx.fill();
+
+    // Áreas Grandes
+    const anchoAreaGrande = 110;
+    const altoAreaGrande = 250;
+    ctx.strokeRect(fx1, centerY - altoAreaGrande / 2, anchoAreaGrande, altoAreaGrande);
+    ctx.strokeRect(fx2 - anchoAreaGrande, centerY - altoAreaGrande / 2, anchoAreaGrande, altoAreaGrande);
+
+    // Áreas Chicas
+    const anchoAreaChica = 40;
+    const altoAreaChica = 120;
+    ctx.strokeRect(fx1, centerY - altoAreaChica / 2, anchoAreaChica, altoAreaChica);
+    ctx.strokeRect(fx2 - anchoAreaChica, centerY - altoAreaChica / 2, anchoAreaChica, altoAreaChica);
+
+    // Puntos de penal
+    ctx.beginPath();
+    ctx.arc(fx1 + 80, centerY, 3.5, 0, Math.PI * 2);
+    ctx.arc(fx2 - 80, centerY, 3.5, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Medialunas
+    ctx.beginPath();
+    ctx.arc(fx1 + 80, centerY, 45, -0.65, 0.65);
+    ctx.stroke();
+
+    ctx.beginPath();
+    ctx.arc(fx2 - 80, centerY, 45, Math.PI - 0.65, Math.PI + 0.65);
+    ctx.stroke();
+
+    // Tiros de esquina
+    const rCorner = 14;
+    ctx.beginPath();
+    ctx.arc(fx1, fy1, rCorner, 0, Math.PI / 2);
+    ctx.stroke();
+
+    ctx.beginPath();
+    ctx.arc(fx1, fy2, rCorner, -Math.PI / 2, 0);
+    ctx.stroke();
+
+    ctx.beginPath();
+    ctx.arc(fx2, fy1, rCorner, Math.PI / 2, Math.PI);
+    ctx.stroke();
+
+    ctx.beginPath();
+    ctx.arc(fx2, fy2, rCorner, Math.PI, Math.PI * 1.5);
+    ctx.stroke();
+
+    // Redes
+    ctx.fillStyle = 'rgba(255, 255, 255, 0.12)';
+    ctx.strokeStyle = 'rgba(255, 255, 255, 0.45)';
+    const altoArco = 80;
+    ctx.fillRect(fx1 - 10, centerY - altoArco / 2, 10, altoArco);
+    ctx.strokeRect(fx1 - 10, centerY - altoArco / 2, 10, altoArco);
+    ctx.fillRect(fx2, centerY - altoArco / 2, 10, altoArco);
+    ctx.strokeRect(fx2, centerY - altoArco / 2, 10, altoArco);
+}
+
+// Marcador superior
 function hud ()
 {
-
     for (const o of overlays)
     {
         ctx.fillStyle = o;
@@ -673,59 +982,100 @@ function hud ()
         );
     }
 
-    rectFill(0, 0, width, area.y1 + 5, 5);
+    // Barra superior
+    ctx.fillStyle = '#00183b';
+    ctx.fillRect(0, 0, width, area.y1);
 
-    // Puntos
-    print(
-        `J1: `,
-        10, 10,// Posición
-        0,// Color
-        'bold 24px sans',// Font
-    );
-    print(
-        ` :J2`,
-        width - 50, 10,
-        0,
-        'bold 24px sans', 
-    );
+    //borde inferior
+    ctx.fillStyle = '#c8102e';
+    ctx.fillRect(0, area.y1 - 3, width, 3);
 
-    const anchoJ1 = ctx.measureText('J1: ').width;
-    const anchoJ2 = ctx.measureText('J2: ').width;
+    // Puntaje Jugador 1
+    print(`NACIONAL: ${j.puntos}`, 25, 7, 0, 'bold 18px sans', 'left', 'top');
 
-    print(
-        j.puntos,
-        10 + anchoJ1, 10,
-        1,
-        'bold 24px sans',
-    )
+    //Puntaje Jugador 2
+    print(`RIVAL: ${j2.puntos}`, width - 25, 7, 0, 'bold 18px sans', 'right', 'top');
 
-    print(
-        j2.puntos,
-        width - 25 - anchoJ2, 10,
-        1,
-        'bold 24px sans', 
-    )
+    //Zona central del hud
+    if (tiempoMensajePowerUp > 0)
+    {
+        tiempoMensajePowerUp--;
+        print(mensajePowerUp, width / 2, 8, 1, 'bold 15px sans', 'center', 'top');
+    }
+    else if (!juegoIniciado && !juegoFinalizado && tiempoEsperaGol <= 0)
+    {
+        print('Presioná "G" para iniciar', width / 2, 8, 0, '15px sans', 'center', 'top');
+    }
+}
 
-    print(
-        'PING PONG',
-        width / 2, 8,
-        0,
-        'bold 30px serif',
-        'center'
-    );
+// Función para iniciar o sacar
+function iniciarOSacar ()
+{
+    if (juegoFinalizado)
+    {
+        juegoFinalizado = false;
+        juegoIniciado = false;
+        j.puntos = 0;
+        j2.puntos = 0;
+        tiempoEsperaGol = 0;
+        Entidad.entidades = Entidad.entidades.filter(e => !(e instanceof Cartel));
+        reset();
+        actualizarBotonIniciar();
+        return;
+    }
 
+    if (p.dx === 0 && p.dy === 0)
+    {
+        tiempoEsperaGol = 0;
+        lanzarPelota();
+    }
+}
+
+//actualizar boton
+function actualizarBotonIniciar ()
+{
+    if (!btnIniciar) return;
+
+    if (juegoFinalizado)
+    {
+        btnIniciar.textContent = 'Jugar de nuevo (G)';
+        btnIniciar.style.display = 'block';
+    }
+    else if (!juegoIniciado || (p.dx === 0 && p.dy === 0))
+    {
+        btnIniciar.textContent = 'Empezar partido (G)';
+        btnIniciar.style.display = 'block';
+    }
+    else
+    {
+        btnIniciar.textContent = 'Partido iniciado';
+    }
+}
+
+if (btnIniciar)
+{
+    btnIniciar.addEventListener('click', () => {
+        iniciarOSacar();
+    });
 }
 
 function reset ()
 {
+    limpiarEfectosPowerUp();
+    //limpiar los powerups de la cancha al haber gol
+    Entidad.entidades = Entidad.entidades.filter(e => !(e instanceof PowerUp));
+    contadorSpawnPowerUp = 0;
+
     j.reset();
     j2.reset();
     p.reset();
+    actualizarBotonIniciar();
 }
 
-//recorre todas las entidades y las actualiza
 function update ()
 {
+    gestionarPowerUps();
+
     for (const entidad of Entidad.entidades)
     {
         entidad.update();
@@ -737,64 +1087,45 @@ function draw ()
     const cam = Camara.getInstance();
     cam.update();
 
-    ctx.translate(cam.x, cam.y);  //aplica desplazamiento de cámara
+    ctx.translate(cam.x, cam.y);
 
-    // Primero la línea central (queda debajo de la pelota y paletas)
-    lineaCentral();
+    //dibujamos la cancha completa
+    dibujaCancha();
 
-    // Después las entidades (pelota, paletas)
+    // Dibujamos todas las entidades excepto el cartel
     for (const entidad of Entidad.entidades)
     {
-        // Los carteles no se dibujan acá, se dibujan al final encima de todo
         if (entidad instanceof Cartel) continue;
         entidad.draw();
     }
 
-    // Después el HUD (barra superior, puntos)
+    // hud superio
     hud();
 
-    // Por último los carteles, así quedan ENCIMA de todo
+    // Cartel final si terminó el partido
     for (const entidad of Entidad.entidades)
     {
         if (entidad instanceof Cartel) entidad.draw();
     }
 
-    ctx.setTransform(1, 0, 0, 1, 0, 0);  //resetear transformaciones
-
-    /*
-    ctx.strokeStyle = colores[ 11 ];
-    ctx.strokeRect(
-        area.x1,
-        area.y1,
-        area.x2 - area.x1,
-        area.y2 - area.y1,
-    )
-    */
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
 }
 
 function gameloop ()
 {
-    cls();       // limpiar pantalla
-
-    update();    // actualizar lógica de todas las entidades
-    draw();      // dibujar todo
-
-    requestAnimationFrame(gameloop);  // repetir
+    cls();
+    update();
+    draw();
+    requestAnimationFrame(gameloop);
 }
 
-//define los límites donde se mueven las entidades
-const area = {
-    x1: 0, y1: 30,
-    x2: width, y2: height,
-};
-
-// J1: izquierda, teclas W/S
-// J2: derecha, teclas flechas
+// Configuración inicial
 const margenPaleta = 30;
-const j = new Jugador('w', 's', area.x1 + margenPaleta);
-const j2 = new Jugador('up', 'down', area.x2 - margenPaleta - 20);
+const j = new Jugador('w', 's', area.x1 + margenPaleta, true);
+const j2 = new Jugador('up', 'down', area.x2 - margenPaleta - 18, false);
 const p = new Pelota();
 
-// Inicia el juego
+// Inicia el juego en estado pausado con puntajes a 0
 reset();
+actualizarBotonIniciar();
 gameloop();
