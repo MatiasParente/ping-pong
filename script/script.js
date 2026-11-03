@@ -8,6 +8,9 @@ const ctx = lienzo.getContext('2d');
 //obtenemos el ancho y el alto del lienzo
 const { width, height } = lienzo;
 
+let juegoIniciado = false;
+let juegoFinalizado = false;
+
 //colores del club Nacional de football
 //cambie los colores para que sean los del bolso
 const colores = [
@@ -15,7 +18,7 @@ const colores = [
     '#ff0000',
     '#0000ff',
     '#00005f',
-    '#ff720e2b',
+    '#CF0028',
     '#000000'
 ];
 
@@ -84,9 +87,9 @@ function btn (boton)
     const i = Control.getInstance();
     return i[ boton ];  // accede a la propiedad por nombre, ej: i['up'] = i.up
 }
-// Ahora left/right no se usan (las paletas se mueven arriba/abajo)
-// Flechas arriba/abajo → Jugador 1 (paleta de abajo)
-// W/S → Jugador 2 (paleta de arriba)
+
+// Flechas arriba/abajo del Jugador 1 
+// W/S del Jugador 2
 class Control
 {
     // garantiza que solo exista UNA instancia de Control
@@ -97,6 +100,7 @@ class Control
     down = false;
     x = false;
     o = false;
+    g = false; //para iniciar el juego
     w = false; //para el jugador 2
     s = false; //para el jugador 2
 
@@ -148,15 +152,14 @@ class Control
                 this.x = presionando;
                 break;
 
+            case 'KeyG': //para iniciar el juego
+                this.g = presionando;
+                break;
+
         }
     }
 }
 
-// PING PONG: ⚠️ OPCIONAL — El shake (vibración) queda bien cuando alguien anota punto
-// No es obligatorio pero le da jugo visual. Si no lo querés, podés sacarlo.
-//camara para el juego — realmente no es un "zoom", es un efecto de VIBRACIÓN
-// Cuando llamás shake(30), la pantalla tiembla por 30 frames (~0.5 seg)
-// Funciona desplazando todo lo dibujado con ctx.translate() en draw()
 class Camara 
 {
     #x = 0;// desplazamiento horizontal actual
@@ -174,7 +177,7 @@ class Camara
     {
         if (Camara.#instancia === null)
         {
-             Camara.#instancia = new Camara();
+            Camara.#instancia = new Camara();
         }
 
         return Camara.#instancia;
@@ -246,7 +249,6 @@ class Entidad
     constructor ()
     {
         this.color = 0; // índice de color de la paleta
-        this.vida = 1; // vida de la entidad (0 = se elimina sola)
 
         this.dx = 0;  // velocidad horizontal (positivo = derecha, negativo = izquierda)
         this.dy = 0;  // velocidad vertical (positivo = abajo, negativo = arriba)
@@ -311,13 +313,9 @@ class Entidad
         return this.#height;
     }
 
-    // las clases hijas lo sobreescriben con su propia lógica
+    // las clases hijas lo sobreescriben
     control () {}
 
-    // Se ejecuta cada frame para cada entidad:
-    // 1. Ejecuta control() (la lógica específica de cada entidad)
-    // 2. Aplica la velocidad (mueve la entidad)
-    // 3. Si vida <= 0, se auto-elimina y llama onDeath()
     update ()
     {
         this.control();
@@ -341,8 +339,7 @@ class Entidad
         }
     }
 
-    // Dibujo por defecto: un rectángulo del tamaño de la entidad
-    // Las clases hijas pueden sobreescribirlo (la Pelota lo hace para dibujar un círculo)
+    // un rectángulo del tamaño de la entidad
     draw ()
     {
         rectFill(
@@ -354,148 +351,62 @@ class Entidad
     }
 }
 
-// PING PONG: ❌ NO SIRVE — Los ladrillos son del Breakout, en Ping Pong no hay
-// ELIMINAR toda esta clase cuando hagas el Ping Pong
-//bloque de ladrillos
-// Hereda de Entidad. Cada ladrillo tiene vidas (más vidas = más golpes para romperlo)
-// El color cambia según las vidas restantes (7 + vidas = índice de color)
-// Cuando la pelota lo golpea, pierde una vida. Cuando llega a 0, se destruye y suma puntos.
-class Ladrillo extends Entidad
-{
-    //constructor del ladrillo, le asignamos posicion, tamaño y vidas
-    constructor (x, y, w = 100, h = 30, vidas = 1)
-    {
-        super();  // llama al constructor de Entidad (se auto-registra en la lista)
-
-        this.x = x;
-        this.y = y;
-
-        this.width = w;
-        this.height = h;
-
-        this.color = 7 + vidas;  // color dinámico según vidas
-
-        this.vida = vidas;
-        this.puntos = vidas * 10;  // más vidas = más puntos al romperlo
-    }
-
-    // Se ejecuta cuando ALGO colisiona con el ladrillo
-    // ent === p verifica si lo que chocó es la pelota (variable global p)
-    onColision (ent)
-    {
-        if (ent === p)
-        {
-            this.vida--;              // pierde una vida
-            this.color = 7 + this.vida; // actualiza color
-        }
-    }
-
-    // Se ejecuta cuando el ladrillo se destruye (vida llega a 0)
-    onDeath ()
-    {
-        j.puntos += this.puntos;  // suma puntos al jugador
-    }
-}
-
-
-// PING PONG: ⚠️ SIRVE CON CAMBIOS GRANDES — Esta es la "paleta" del Breakout
-// Para Ping Pong necesitás:
-//   1. Renombrar a "Paleta"
-//   2. Cambiar movimiento HORIZONTAL → VERTICAL (dy en vez de dx, up/down en vez de left/right)
-//   3. Cambiar tamaño: de ancha y baja (150x20) a angosta y alta (ej: 20x100)
-//   4. Crear DOS instancias: paleta arriba (J2) y paleta abajo (J1)
-//   5. Que cada paleta reciba sus propias teclas (J1: flechas, J2: W/S)
-//   6. Quitar el sistema de vidas (en Ping Pong no se muere, se anota punto)
-//   7. Quitar puedeCtrl (no hace falta bloquear controles)
 class Jugador extends Entidad
 {
-    constructor ()
+    constructor (teclaArriba, teclaAbajo, posX)
     {
         super();
 
-        this.width = 150;   // PING PONG: ⚠️ Cambiar — paleta vertical sería ej: width=100, height=20
-        this.height = 20;   // PING PONG: ⚠️ Cambiar — intercambiar con width
-        this.color = 9;     // naranja
-        // Se posiciona centrado horizontalmente, abajo del todo
-        this.x = (area.x2 - area.x1) / 2 - this.width / 2;
-        this.y = area.y2 - this.height;
-        // PING PONG: ⚠️ Cambiar posición — J1 abajo, J2 arriba
+        this.width = 20;   
+        this.height = 120;  
+        this.color = 0;
 
-        this.vel = 5;          // velocidad de movimiento
-        this.puedeCtrl = true; // PING PONG: ❌ No se necesita
+        // Guardar teclas para usar despues
+        this.tecArriba = teclaArriba;
+        this.tecAbajo = teclaAbajo;
 
-        this.puntos = 0;       // PING PONG: ✅ Sirve
-        this.vida = 3;         // PING PONG: ❌ No se necesita (no hay vidas en Pong)
+        //Guardar posición inicial
+        this.posInicialX = posX;
+        
+        // Posicionar al jugador
+        this.x = posX;
+        this.y = area.y1 + (area.y2 - area.y1) / 2 - this.height / 2;
+        this.vel = 5;
+        this.puntos = 0; 
     }
 
-    // Se ejecuta cada frame — lee el teclado y mueve la paleta
+    // lee el teclado y mueve la paleta
     control ()
     {
-        this.dx = 0;  // resetea velocidad horizontal cada frame
+        this.dy = 0;  // resetea velocidad
 
-        if (!this.puedeCtrl)  // PING PONG: ❌ Quitar este bloqueo
+        if (btn(this.tecArriba)) this.dy = -this.vel;
+        if (btn(this.tecAbajo)) this.dy = this.vel;
+        
+        // evita que la paleta salga del área
+        if (this.y < area.y1)
         {
-            return;
-        }
-        // Controles del jugador, mueve el rectangulo
-        // PING PONG: ⚠️ Cambiar a movimiento HORIZONTAL (izq/der)
-        // En vez de this.dx, usar this.dx para mover la paleta en X
-        // J1: btn('left') / btn('right') → this.dx = ±vel
-        // J2: btn('a') / btn('d') ó btn('w') / btn('s') o lo que prefieras
-        if (btn('right')) this.dx = this.vel;
-        if (btn('left')) this.dx -= this.vel;
-
-        // Restricciones horizontales — evita que la paleta salga del área
-        // PING PONG: ⚠️ Cambiar a restricciones en X (no salirse del área)
-        if (this.x < area.x1)
-        {
-            this.x = area.x1;
-            this.dx = 0
+            this.y = area.y1;
+            this.dy = 0
         }
 
-        if (this.x > area.x2 - this.width)
+        if (this.y > area.y2 - this.height)
         {
-            this.x = area.x2 - this.width;
-            this.dx = 0;
+            this.y = area.y2 - this.height;
+            this.dy = 0;
         }
     }
 
-    //reinicia la posicion del jugador y desactiva los controles
-    // PING PONG: ⚠️ Simplificar — solo recentrar la paleta, sin el setTimeout
+    //reinicia la posicion del jugador
     reset ()
     {
-        this.x = (area.x2 - area.x1) / 2 - this.width / 2;
-        this.y = area.y2 - this.height;
-        this.puedeCtrl = false;
-
-        // Después de 1.8 seg reactiva controles — PING PONG: ❌ No se necesita
-        setTimeout(() => this.puedeCtrl = true, 1800);
+        this.x = this.posInicialX;
+        this.y = area.y1 + (area.y2 - area.y1) / 2 - this.height / 2;
     }
 
-    // Se ejecuta cuando algo colisiona con el jugador
-    // Cambia de color con cada golpe (efecto visual del Breakout)
-    // PING PONG: ❌ No se necesita este efecto
-    onColision (entidad)
-    {
-        this.color++;
-
-        if (this.color == 7) this.color++;   // salta el blanco (no se ve en fondo blanco)
-        if (this.color == 16) this.color = 0; // vuelve al principio de la paleta
-    }
-
-    // Se ejecuta cuando vida llega a 0
-    // PING PONG: ❌ No se necesita — en Pong no se muere
-    onDeath ()
-    {
-        new Cartel('¡Moriste!', 7, 8);
-    }
 }
 
-// PING PONG: ⚠️ SIRVE — Útil para mostrar "¡Punto J1!", "¡Gana J2!", etc.
-// Solo cambiás los textos
-//cartel que muestra mensajes — hereda de Entidad
-// Ocupa todo el ancho de la pantalla y se posiciona en el tercio superior
-// fg = color del texto (foreground), bg = color del fondo (background)
+//para los resultados
 class Cartel extends Entidad
 {
     constructor (txt /*String*/, fg /*Int*/, bg /*Int*/)
@@ -503,13 +414,13 @@ class Cartel extends Entidad
         super();
 
         this.x = 0;
-        this.y = height / 3;       // posición vertical: un tercio de la pantalla
-        this.height = this.y;       // altura del cartel = otro tercio
-        this.width = width;         // ancho completo
+        this.y = height / 3;// un tercio de la pantalla
+        this.height = this.y;      
+        this.width = width;        
 
         this.txt = txt;
-        this.color = fg;            // color del texto
-        this.bg = bg;               // color del fondo del cartel
+        this.color = fg;// color del texto
+        this.bg = bg; // color del fondo del cartel
 
         // overlays.push('#000a');
     }
@@ -517,8 +428,6 @@ class Cartel extends Entidad
     // Sobreescribe el draw() de Entidad con su propio dibujo
     draw ()
     {
-        // Primero dibuja un overlay semi-transparente negro sobre toda el área
-        // '#000a' = negro con alfa (semi-transparente) → oscurece el juego de fondo
         ctx.fillStyle = '#000a';
         ctx.fillRect(
             area.x1, area.y1,
@@ -526,14 +435,12 @@ class Cartel extends Entidad
             area.y2 - area.y1
         );
 
-        // Dibuja el rectángulo de fondo del cartel
         rectFill(
             this.x, this.y, 
             this.x + this.width, this.y + this.height, 
             this.bg
         );
 
-        // Dibuja el texto centrado dentro del cartel
         print(
             this.txt, this.x + this.width / 2, this.y + this.height / 2, 
             this.color, 'bold 40px sans', 'center', 'center'
@@ -541,9 +448,6 @@ class Cartel extends Entidad
     }
 }
 
-// PING PONG: ⚠️ SIRVE CON CAMBIOS — La pelota es esencial, pero hay que cambiar
-// los rebotes: en Breakout rebota en paredes izq/der/arriba y "cae" abajo.
-// En Ping Pong vertical: rebota en paredes izq/der, y "sale" arriba/abajo = gol.
 //clase de la pelota
 class Pelota extends Entidad
 {
@@ -552,48 +456,81 @@ class Pelota extends Entidad
         super();
 
         this.width = 30;
-        this.height = this.width;  // es cuadrada (30x30) aunque se dibuja como círculo
-        this.color = 12;           // azul celeste
+        this.height = this.width;
+        this.color = 1;
 
-        // Hitbox ligeramente más chica que el tamaño visual
-        // Esto da un poco de "tolerancia" — hace que la colisión sea más justa
+
         this.hitbox = {
             x1: 3, y1: 3, x2: 27, y2: 27
         };
-        this.vel = 4;  // velocidad base
+        this.vel = 4;
     }
 
-    // Lógica de la pelota — se ejecuta cada frame
     control ()
     {
-        // Si el jugador no tiene vida, detener la pelota
-        // PING PONG: ⚠️ Cambiar — chequear si el juego terminó de otra forma
-        if (j.vida <= 0)
-        {
-            this.dx = 0;
-            this.dy = 0;
+        // Si el juego terminó y se presiona G, reiniciar todo
+        if(juegoFinalizado && btn('g')){
+            juegoFinalizado = false;
+            juegoIniciado = false;
+            j.puntos = 0;
+            j2.puntos = 0;
+            // Eliminar carteles
+            Entidad.entidades = Entidad.entidades.filter(e => !(e instanceof Cartel));
+            reset();
             return;
         }
 
-        // Rebote en paredes laterales (izquierda y derecha)
-        // Cuando toca el borde, invierte la dirección horizontal (dx *= -1)
-        // PING PONG: ✅ SIRVE — En Ping Pong vertical la pelota también rebota en los laterales
-        if (this.x <= area.x1 || this.x >= area.x2 - this.width)
-        {
-            this.dx *= -1;
+        // Si la pelota está quieta y se presiona G (o ya se inició la partida), lanzar
+        if(this.dx === 0 && this.dy === 0 && !juegoFinalizado && (btn('g') || juegoIniciado)){
+            juegoIniciado = true;
+            // Dirección horizontal aleatoria (izquierda o derecha)
+            const dirX = Math.random() > 0.5 ? 1 : -1;
+            // Ángulo vertical aleatorio
+            const dirY = (Math.random() * 1.4 - 0.7);
+            this.dx = dirX * this.vel;
+            this.dy = dirY * this.vel;
         }
 
-        // Choque arriba — en Breakout la pelota rebota en el techo
-        // PING PONG: ❌ CAMBIAR — En Ping Pong si sale por ARRIBA = gol (punto para J1)
-        // En vez de rebotar, sumar punto y reiniciar
+        // Si algún jugador llego a 10 puntos, detener la pelota
+        if (j.puntos >= 10 || j2.puntos >= 10)
+        {
+            this.dx = 0;
+            this.dy = 0;
+
+            // Solo mostrar el cartel UNA vez
+            if(!juegoFinalizado){
+                juegoFinalizado = true;
+                juegoIniciado = false;
+                if (j.puntos >= 10) new Cartel("Gano el jugador 1", 4, 2);
+                else new Cartel("Gano el jugador 2", 2, 4);
+            }
+
+            return;
+        }
+
+        if (this.x <= area.x1)
+        {
+            j2.puntos += 1;   
+            sonido(1);  
+            Camara.getInstance().shake(30); 
+
+            reset(); 
+        }
+
+        if(this.x >= area.x2 - this.width)
+        {
+            j.puntos += 1;   
+            sonido(1);  
+            Camara.getInstance().shake(30); 
+
+            reset(); 
+        }
+
         if (this.y <= area.y1)
         {
             this.dy *= -1;
         }
 
-        // Recorre TODAS las entidades y verifica colisión con cada una
-        // e === this → se saltea a sí misma (la pelota no colisiona consigo misma)
-        // PING PONG: ✅ SIRVE — Pero solo debería colisionar con las paletas
         for (const e of Entidad.entidades)
         {
             // ¿La entidad a verificar es la pelota?
@@ -606,93 +543,63 @@ class Pelota extends Entidad
             if (colision(this, e)) this.onColision(e);
         }
 
-        // Choque abajo — en Breakout si la pelota cae abajo, el jugador pierde vida
-        // PING PONG: ❌ CAMBIAR — Si sale por ABAJO = gol (punto para J2)
-        // En vez de quitar vida, sumar punto al J2 y reiniciar posiciones
         if (this.y >= area.y2 - this.height)
         {
-            j.vida--;
-
-            sonido(1);                        // sonido de muerte/gol
-            Camara.getInstance().shake(30);    // vibración de pantalla
-
-            reset();                           // reiniciar posiciones
+            this.dy *= -1;                        
         }
     }
 
     // Reinicia la pelota al centro
-    // PING PONG: ⚠️ Cambiar — centrar en la cancha, no sobre la paleta
     reset ()
     {
-        // Centra horizontalmente
+        // Centrado al medio del ÁREA de juego (no de la pantalla)
         this.x = area.x1 + (area.x2 - area.x1) / 2 - this.width / 2;
-        // En Breakout: la posiciona justo arriba del jugador
-        // PING PONG: Cambiar a centrar verticalmente en la cancha
-        this.y = area.y2 - this.height - j.height - 10;
+        this.y = area.y1 + (area.y2 - area.y1) / 2 - this.height / 2;
 
         // Detener la pelota
         this.dx = 0;
-        this.dy = 0;
-
-        // Después de 2 segundos, lanzar la pelota en diagonal
-        // PING PONG: ⚠️ Cambiar dirección — lanzar hacia arriba O abajo aleatoriamente
-        setTimeout(() => {
-            this.dx = this.vel;
-            this.dy = -this.vel;
-        }, 2000);
+        this.dy = 0;   
     }
 
-    // Se ejecuta cuando la pelota choca con algo
-    // ESTA LÓGICA ES MUY INTELIGENTE — determina de qué lado vino el golpe:
-    // "Deshace" el movimiento en un eje, si ya no hay colisión → el golpe fue por ese eje
-    // PING PONG: ✅ SIRVE tal cual — funciona perfecto para los rebotes con paletas
     onColision (entidad)
     {
-        // PASO 1: ¿El golpe fue VERTICAL (arriba/abajo)?
         let dy_actual = this.dy;
-        this.y -= this.dy;  // "retrocede" en Y (deshace el movimiento vertical)
+        this.y -= this.dy; 
 
-        // Si al retroceder en Y ya no hay colisión → el choque ERA vertical
         if (!colision(this, entidad))
         {
-            this.dy *= -1;  // invertir dirección vertical
+            this.dy *= -1;
         }
 
-        this.y += dy_actual;  // restaura la posición original
+        this.y += dy_actual;
 
-        // PASO 2: ¿El golpe fue HORIZONTAL (izquierda/derecha)?
         let dx_actual = this.dx;
-        this.x -= this.dx;  // "retrocede" en X
+        this.x -= this.dx;
 
         if (!colision(this, entidad))
         {
-            this.dx *= -1;  // invertir dirección horizontal
+            this.dx *= -1;
         }
 
-        this.x += dx_actual;  // restaura la posición original
+        this.x += dx_actual; 
 
-        sonido(0);  // sonido de rebote
+        sonido(0); // sonido de rebote
 
-        // Si la entidad golpeada tiene su propio onColision, lo ejecuta
-        // (en Breakout el ladrillo pierde vida, el jugador cambia color)
         if (entidad.onColision !== undefined)
         {
             entidad.onColision(this);
         }
     }
 
-    // Dibuja la pelota como CÍRCULO (sobreescribe el rectángulo de Entidad)
-    // PING PONG: ✅ SIRVE tal cual
     draw ()
     {
         circFill(
-            this.x + this.width / 2,   // centro X del círculo
-            this.y + this.height / 2,  // centro Y del círculo
-            this.width / 2,            // radio = mitad del ancho
+            this.x + this.width / 2,
+            this.y + this.height / 2,
+            this.width / 2,
             this.color
         );
 
-        // Código de debug comentado — dibuja el borde del hitbox para verlo
         /*
         ctx.strokeStyle = colores[ 11 ];
         ctx.strokeRect(
@@ -705,35 +612,28 @@ class Pelota extends Entidad
     }
 }
 
-// Array de colores overlay que se dibujan encima de todo (lo usa el shake de la cámara)
-// PING PONG: ⚠️ Opcional — solo si usás el shake
+//colores que se dibujan encima de todo
 const overlays = [];
 
-// PING PONG: ✅ SIRVE — Genera sonidos SIN archivos de audio, todo con matemáticas
-// Cada sonido es una función que genera la forma de onda sample por sample
+// Genera sonidos sin archivos de audio, todo con matemáticas
 function sonido (ind = 0)
 {
-    const t = (i, n) => (n - i) / n; // lerp — no se usa realmente
+    const t = (i, n) => (n - i) / n;
 
     const sonidos = [
-        // 0: Choque — onda sinusoidal que decae rápido → suena como "pip"
-        // Math.sin genera la onda, Math.exp(-i/300) la hace decaer (fade out)
+        // 0: Choque
         i => Math.sin(i / 20) * Math.exp(-i / 300), 
         
-        // 1: Muerte/Gol — ruido blanco que decae lento → suena como explosión
-        // Math.random()*2-1 genera valores aleatorios entre -1 y 1 (ruido)
+        // 1: Gol
         i => (Math.random() * 2 - 1) * Math.exp(-i/1e4),
     ];
 
     const f = sonidos[ ind ];
     
-    // Crea un AudioContext (el "reproductor" de audio del navegador)
-    // Genera un buffer de 96000 muestras a 48kHz = 2 segundos de audio
     const A = new AudioContext();
-    const m = A.createBuffer(1, 96e3, 48e3);  // 1 canal, 96000 muestras, 48kHz
-    const b = m.getChannelData(0);             // obtiene el array de samples
+    const m = A.createBuffer(1, 96e3, 48e3);
+    const b = m.getChannelData(0);
 
-    // Llena cada muestra con el resultado de la función de sonido
     for (let i=96e3; i--;)
     {
         b[i] = f(i);
@@ -747,14 +647,23 @@ function sonido (ind = 0)
     s.start();
 }
 
-// PING PONG: ⚠️ SIRVE CON CAMBIOS — El HUD hay que adaptarlo para 2 jugadores
-// En vez de "Puntos" de 1 jugador, mostrar puntos de J1 y J2
-// Quitar las vidas (💚), cambiar título a "PING PONG"
-// hud = Heads-Up Display — la interfaz que se dibuja encima del juego
+// Dibuja la línea central punteada (se llama ANTES de las entidades para que la pelota quede encima)
+function lineaCentral ()
+{
+    const centroX = width / 2;
+    const cantidadSegmentos = 20;
+    const altoTotal = area.y2 - area.y1;
+    const altoSegmento = altoTotal / (cantidadSegmentos * 2);
+    for (let i = 0; i < cantidadSegmentos; i++)
+    {
+        const yPos = area.y1 + i * altoSegmento * 2;
+        rectFill(centroX - 2, yPos, centroX + 2, yPos + altoSegmento, 0); 
+    }
+}
+
 function hud ()
 {
-    // Overlay — dibuja los colores semi-transparentes del array overlays
-    // Lo usa el shake para poner un flash rojo
+
     for (const o of overlays)
     {
         ctx.fillStyle = o;
@@ -764,64 +673,57 @@ function hud ()
         );
     }
 
-    // Puntos — muestra el texto "Puntos: " y después el número
-    // PING PONG: ⚠️ Cambiar — mostrar puntos de J1 a la izquierda y J2 a la derecha
-    // measureText() calcula el ancho en píxeles del texto para posicionar el número al lado
+    rectFill(0, 0, width, area.y1 + 5, 5);
+
+    // Puntos
     print(
-        `Puntos: `,
-        10, 10,             // Posición
-        3,                 // Color
-        'bold 24px sans',   // Font
+        `J1: `,
+        10, 10,// Posición
+        0,// Color
+        'bold 24px sans',// Font
+    );
+    print(
+        ` :J2`,
+        width - 50, 10,
+        0,
+        'bold 24px sans', 
     );
 
-    const ancho = ctx.measureText('Puntos: ').width;
+    const anchoJ1 = ctx.measureText('J1: ').width;
+    const anchoJ2 = ctx.measureText('J2: ').width;
 
     print(
         j.puntos,
-        10 + ancho, 10,
-        14,
-        'bold 24px sans',   // Font
+        10 + anchoJ1, 10,
+        1,
+        'bold 24px sans',
     )
 
-    // Título
-    // PING PONG: ⚠️ Cambiar 'BREAKOUT' por 'PING PONG'
     print(
-        'BREAKOUT',
+        j2.puntos,
+        width - 25 - anchoJ2, 10,
+        1,
+        'bold 24px sans', 
+    )
+
+    print(
+        'PING PONG',
         width / 2, 8,
         0,
         'bold 30px serif',
         'center'
     );
 
-    // Vidas — muestra corazones según la vida del jugador
-    // PING PONG: ❌ Quitar — en Ping Pong no hay vidas
-    let vidas = [];
-
-    for (let i = 0; i < j.vida; i++)
-    {
-        vidas.push('💚');
-    }
-    
-    print(
-        vidas.join(' '),
-        width - 10, 10,
-        0,
-        'bold 24px sans',
-        'right'
-    );
 }
 
-// PING PONG: ⚠️ Cambiar — reiniciar ambas paletas y la pelota
-// Ahora solo reinicia 1 jugador (j) y la pelota (p)
 function reset ()
 {
     j.reset();
+    j2.reset();
     p.reset();
 }
 
-// PING PONG: ✅ SIRVE tal cual — recorre todas las entidades y las actualiza
-// El for...of recorre el array Entidad.entidades y llama update() de cada una
-// update() internamente llama control() (lógica) y aplica velocidad (movimiento)
+//recorre todas las entidades y las actualiza
 function update ()
 {
     for (const entidad of Entidad.entidades)
@@ -830,29 +732,35 @@ function update ()
     }
 }
 
-// PING PONG: ✅ SIRVE tal cual
-// 1. Actualiza la cámara (shake)
-// 2. ctx.translate mueve TODO lo que se dibuja después (efecto de vibración)
-// 3. Dibuja todas las entidades
-// 4. Dibuja el HUD (marcador)
-// 5. ctx.setTransform resetea las transformaciones para que el próximo frame empiece limpio
 function draw ()
 {
     const cam = Camara.getInstance();
     cam.update();
 
-    ctx.translate(cam.x, cam.y);  // aplica desplazamiento de cámara
+    ctx.translate(cam.x, cam.y);  //aplica desplazamiento de cámara
 
+    // Primero la línea central (queda debajo de la pelota y paletas)
+    lineaCentral();
+
+    // Después las entidades (pelota, paletas)
     for (const entidad of Entidad.entidades)
     {
+        // Los carteles no se dibujan acá, se dibujan al final encima de todo
+        if (entidad instanceof Cartel) continue;
         entidad.draw();
     }
 
+    // Después el HUD (barra superior, puntos)
     hud();
 
-    ctx.setTransform(1, 0, 0, 1, 0, 0);  // resetear transformaciones
+    // Por último los carteles, así quedan ENCIMA de todo
+    for (const entidad of Entidad.entidades)
+    {
+        if (entidad instanceof Cartel) entidad.draw();
+    }
 
-    // Debug: dibuja el borde del área de juego (comentado)
+    ctx.setTransform(1, 0, 0, 1, 0, 0);  //resetear transformaciones
+
     /*
     ctx.strokeStyle = colores[ 11 ];
     ctx.strokeRect(
@@ -864,10 +772,6 @@ function draw ()
     */
 }
 
-// PING PONG: ✅ SIRVE tal cual — Este es el corazón del juego
-// Se ejecuta ~60 veces por segundo (60fps)
-// Patrón: limpiar pantalla → actualizar lógica → dibujar todo → repetir
-// requestAnimationFrame le pide al navegador que llame gameloop() en el próximo frame
 function gameloop ()
 {
     cls();       // limpiar pantalla
@@ -878,53 +782,19 @@ function gameloop ()
     requestAnimationFrame(gameloop);  // repetir
 }
 
-// Área de juego — define los límites donde se mueven las entidades
-// y1: 40 deja 40px arriba para el HUD (marcador, título)
-// PING PONG: ✅ SIRVE — solo ajustar si querés más o menos espacio para el HUD
+//define los límites donde se mueven las entidades
 const area = {
-    x1: 0, y1: 40,
+    x1: 0, y1: 30,
     x2: width, y2: height,
 };
 
-// PING PONG: ⚠️ CAMBIAR — En vez de 1 Jugador, crear 2 Paletas:
-// const j1 = new Paleta(/* posición arriba, teclas: W/S */)
-// const j2 = new Paleta(/* posición abajo, teclas: flechas */)
-const j = new Jugador();
+// J1: izquierda, teclas W/S
+// J2: derecha, teclas flechas
+const margenPaleta = 30;
+const j = new Jugador('w', 's', area.x1 + margenPaleta);
+const j2 = new Jugador('up', 'down', area.x2 - margenPaleta - 20);
 const p = new Pelota();
 
-// PING PONG: ❌ ELIMINAR TODO ESTO — No hay ladrillos en Ping Pong
-// Este bloque calcula el tamaño y posición de cada ladrillo en una grilla
-// y los crea con un doble for (filas × columnas)
-// Ladrillos
-const ladrillos = [];
-const columnas = 8;
-const filas = 4;
-const margenhor = 10;
-const margenver = 0;
-const gap = 10;
-const arealadrillos = area.x2 - area.x1 - 2 * margenhor;
-const widthladri = (arealadrillos - (columnas - 1) * gap) / columnas;
-const heightladri = 25;
-
-for (let j = 0; j < filas; j++)
-{
-    let posy = area.y1 + margenver + j * (heightladri + gap);
-
-    for (let i = 0; i < columnas; i++)
-    {
-        const ladrillo = new Ladrillo(
-            area.x1 + margenhor + i * (widthladri + gap), 
-            posy, 
-            widthladri, 
-            heightladri,
-            filas - j  // las filas de arriba tienen más vidas
-        );
-
-        ladrillos.push(ladrillo);
-    }
-}
-
-// Inicia el juego: reinicia posiciones y arranca el loop
-// PING PONG: ✅ SIRVE
+// Inicia el juego
 reset();
 gameloop();
