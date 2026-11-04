@@ -1,14 +1,12 @@
 console.log('Ping Pong - Club Nacional de Football');
 
-// Obtenemos el canvas y su contexto
+// Obtenemos el canvas
 const lienzo = document.getElementById('lienzo');
 const ctx = lienzo.getContext('2d');
 const { width, height } = lienzo;
-
-// Botón de inicio
 const btnIniciar = document.getElementById('btnIniciar');
 
-// Define los límites donde se mueven las entidades (debajo del marcador superior)
+// limites donde se mueven las entidades
 const area = {
     x1: 0, 
     y1: 36,
@@ -16,26 +14,24 @@ const area = {
     y2: height,
 };
 
+//para saber cuando enviar los mmensajes y que no haya necesidad de constantemente darle a la g para empezar
 let juegoIniciado = false;
 let juegoFinalizado = false;
 
-// Variables para la espera de 2 segundos tras un gol
+//para esperar 2 seg despues de gol
 let tiempoEsperaGol = 0;
 let mensajeGol = '';
 
-// Colores del Club Nacional de Football
+// Colores de Nacional
 const colores = [
-    '#ffffff', // 0: Blanco
-    '#ff0000', // 1: Rojo
-    '#002d72', // 2: Azul Nacional
-    '#00183b', // 3: Azul Oscuro tablero
-    '#CF0028', // 4: Rojo Tricolor
-    '#000000'  // 5: Negro
+    '#ffffff',
+    '#ff0000',
+    '#002d72',
+    '#00183b',
+    '#CF0028',
+    '#000000'
 ];
 
-// -------------------------------------------------------------
-// PRE-CARGA DE IMÁGENES
-// -------------------------------------------------------------
 const imgPelota = new Image();
 imgPelota.src = 'imagenes/pelota.png';
 
@@ -52,18 +48,15 @@ imgMaxi.src = 'imagenes/maxi.jpeg';
 const imgVillalba = new Image();
 imgVillalba.src = 'imagenes/villalba.jpg';
 
-// -------------------------------------------------------------
-// SISTEMA DE AUDIO ORIGINAL (Exacto al original)
-// -------------------------------------------------------------
 function sonido (ind = 0)
 {
     const t = (i, n) => (n - i) / n;
 
     const sonidos = [
-        // 0: Choque
+        // con un choque
         i => Math.sin(i / 20) * Math.exp(-i / 300), 
         
-        // 1: Gol
+        // para cuando es gol
         i => (Math.random() * 2 - 1) * Math.exp(-i/1e4),
     ];
 
@@ -91,13 +84,13 @@ function cls ()
     ctx.clearRect(0, 0, width, height);
 }
 
-// Número aleatorio entre 0 y max
+// num aleatorio entre 0 y max
 function rnd (max)
 {
     return Math.random() * max;
 }
 
-// Dibuja un rectángulo coloreado
+// Dibuja rectangulo para las paletas de los jugadores
 function rectFill (x1, y1, x2, y2, color)
 {
     ctx.fillStyle = colores[ color ];
@@ -108,7 +101,7 @@ function rectFill (x1, y1, x2, y2, color)
     );
 }
 
-// Dibuja un círculo coloreado
+//dibujamos la pelota (circulo)
 function circFill (x, y, r, color)
 {
     ctx.fillStyle = colores[ color ];
@@ -117,7 +110,7 @@ function circFill (x, y, r, color)
     ctx.fill();
 }
 
-// Escribe texto en el lienzo con alineación explícita
+//escribe texto en el lienzo
 function print (txt, x, y, c, font = 'bold 30px sans', align = 'left', baseline = 'top')
 {
     ctx.font = font;
@@ -127,7 +120,7 @@ function print (txt, x, y, c, font = 'bold 30px sans', align = 'left', baseline 
     ctx.fillText(txt, x, y);
 }
 
-// Detecta colisiones entre dos entidades usando AABB
+//Para detectar colisiones
 function colision (a, b)
 {
     return !(
@@ -138,7 +131,7 @@ function colision (a, b)
     );
 }
 
-// Lee el estado de los controles
+// Para leer el estado de los controles
 function btn (boton)
 {
     const i = Control.getInstance();
@@ -154,7 +147,7 @@ class Control
     down = false;
     x = false;
     o = false;
-    g = false;
+    g = false; //para empezar el partido
     w = false;
     s = false;
 
@@ -204,7 +197,7 @@ class Control
     }
 }
 
-// Efecto de cámara y sacudida
+// Efecto de cámara
 class Camara 
 {
     #x = 0;
@@ -215,7 +208,7 @@ class Camara
 
     constructor ()
     {
-        // Tinte suave semitransparente para que no tape la pantalla por completo
+        // color suave semitransparente
         this.overlayColor = 'rgba(207, 0, 40, 0.25)';
     }
 
@@ -334,7 +327,7 @@ class Entidad
     }
 }
 
-// Clase para las paletas de los jugadores con diseño Tricolor
+// Clase para las paletas de los jugadores
 class Jugador extends Entidad
 {
     constructor (teclaArriba, teclaAbajo, posX, esLocal = true)
@@ -344,7 +337,7 @@ class Jugador extends Entidad
         this.width = 18;   
         this.height = 110;  
         this.color = 0;
-        this.esLocal = esLocal; // true para Jugador 1 (Nacional), false para Jugador 2 (Rival)
+        this.esLocal = esLocal; // true para Jugador 1, false para Jugador 2
 
         this.tecArriba = teclaArriba;
         this.tecAbajo = teclaAbajo;
@@ -388,7 +381,7 @@ class Jugador extends Entidad
         ctx.save();
         const r = 5;
 
-        // Fondo de la paleta
+        // color del jugador
         ctx.fillStyle = this.esLocal ? '#002d72' : '#c8102e';
         ctx.beginPath();
         if (ctx.roundRect) {
@@ -397,17 +390,6 @@ class Jugador extends Entidad
             ctx.rect(this.x, this.y, this.width, this.height);
         }
         ctx.fill();
-
-        // Borde blanco nítido
-        ctx.strokeStyle = '#ffffff';
-        ctx.lineWidth = 2;
-        ctx.stroke();
-
-        // Franja tricolor central en la paleta
-        ctx.fillStyle = this.esLocal ? '#c8102e' : '#002d72';
-        const franjaW = 4;
-        const franjaX = this.x + (this.width - franjaW) / 2;
-        ctx.fillRect(franjaX, this.y + 12, franjaW, this.height - 24);
 
         ctx.restore();
     }
@@ -457,14 +439,11 @@ class Cartel extends Entidad
     }
 }
 
-// -------------------------------------------------------------
-// CONTROLADORES DE POWER-UPS Y ESTADO
-// -------------------------------------------------------------
 let timeoutEfectoPowerUp = null;
 let mensajePowerUp = '';
 let tiempoMensajePowerUp = 0;
 
-// Cantidad máxima de power-ups que pueden estar en pantalla a la vez
+//cantidad máxima de power-ups que pueden estar en pantalla a la vez
 const MAX_POWERUPS = 1;
 
 function mostrarMensajePowerUp (texto)
