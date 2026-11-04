@@ -461,6 +461,7 @@ function limpiarEfectosPowerUp ()
     }
     p.congelada = false;
     p.enTurbo = false;
+    p.tiroMaxi = false;
     mensajePowerUp = '';
     tiempoMensajePowerUp = 0;
 }
@@ -513,8 +514,9 @@ class PowerUp extends Entidad
             // tiro potente hacia adelante
             limpiarEfectosPowerUp();
             const dirX = Math.sign(pelota.dx) || (pelota.x < width / 2 ? 1 : -1);
-            pelota.dx = dirX * 12;
-            pelota.dy = (Math.random() * 6 - 3); // direccion frontal
+            pelota.tiroMaxi = true;
+            pelota.dx = dirX * 16; // tiro x16
+            pelota.dy = (Math.random() * 6 - 3);
             mostrarMensajePowerUp('¡TIRO DE MAXI!');
         }
         else if (this.tipo === 'villalba')
@@ -620,14 +622,15 @@ class Pelota extends Entidad
         this.rotacion = 0;
         this.congelada = false;
         this.enTurbo = false;
+        this.tiroMaxi = false;
     }
 
     control ()
     {
-        // reiniciar juego si termino al precionar g
-        if (juegoFinalizado && btn('g'))
+        // si el juego termino, solo esperar que presionen G
+        if (juegoFinalizado)
         {
-            iniciarOSacar();
+            if (btn('g')) iniciarOSacar();
             return;
         }
 
@@ -722,10 +725,69 @@ class Pelota extends Entidad
         this.vel = 4.5; // restablecer velocidad con el gol
         this.congelada = false;
         this.enTurbo = false;
+        this.tiroMaxi = false;
     }
 
     onColision (entidad)
     {
+        // si choca contra una paleta
+        if (entidad instanceof Jugador)
+        {
+            // si venia del tiro de maxi, vuelve a la velocidad normal
+            if (this.tiroMaxi)
+            {
+                this.tiroMaxi = false;
+                this.vel = 4.5;
+            }
+            else if (!this.enTurbo && !this.congelada)
+            {
+                this.vel *= 1.05; // aumenta un poco la velocidad
+            }
+
+            const velocidad = this.enTurbo ? this.vel * 1.8 : this.vel;
+
+            // calculamos el punto de impacto relativo al centro de la paleta
+            const centroPelota = this.y + this.height / 2;
+            const centroPaleta = entidad.y + entidad.height / 2;
+            let impacto = (centroPelota - centroPaleta) / (entidad.height / 2);
+            impacto = Math.max(-1, Math.min(1, impacto));
+
+            // si va muy recta al medio, le damos inclinacion para no quedar en bucle
+            if (Math.abs(impacto) < 0.25)
+            {
+                impacto = impacto >= 0 ? 0.35 : -0.35;
+            }
+
+            // direccion horizontal hacia afuera de la paleta
+            const dirX = (this.x < entidad.x) ? -1 : 1;
+
+            // angulo de inclinacion segun donde pego
+            const maxAngulo = Math.PI * 0.32;
+            const angulo = impacto * maxAngulo;
+
+            this.dx = dirX * velocidad * Math.cos(angulo);
+            this.dy = velocidad * Math.sin(angulo);
+
+            // evitamos que la pelota quede adentro de la paleta
+            if (dirX === 1)
+            {
+                this.x = entidad.x + entidad.width + 1;
+            }
+            else
+            {
+                this.x = entidad.x - this.width - 1;
+            }
+
+            sonido(0);
+
+            if (entidad.onColision !== undefined)
+            {
+                entidad.onColision(this);
+            }
+            return;
+        }
+
+        // rebote comun para otras cosas
         let dy_actual = this.dy;
         this.y -= this.dy; 
 
@@ -746,14 +808,6 @@ class Pelota extends Entidad
 
         this.x += dx_actual; 
 
-        // para que aumente la velocidad
-        if (entidad instanceof Jugador && !this.enTurbo && !this.congelada)
-        {
-            this.dx *= 1.05;
-            this.dy *= 1.05;
-        }
-
-        // Sonido de rebote
         sonido(0); 
 
         if (entidad.onColision !== undefined)
@@ -802,18 +856,25 @@ class Pelota extends Entidad
 // Overlays para la cámara
 const overlays = [];
 
-//para cuando hacemos gol y que espere los 2 segundos
+// para cuando hacemos gol y que espere los 2 segundos
 function anotarGol (mensaje)
 {
+    // si el partido ya termino no hacer nada
+    if (juegoFinalizado) return;
+
     // Si algun jugador llego a 10 puntos termina el partido
     if (j.puntos >= 10 || j2.puntos >= 10)
     {
-        p.dx = 0;
-        p.dy = 0;
         juegoFinalizado = true;
         juegoIniciado = false;
+        tiempoEsperaGol = 0;
+        reset(); // centramos la pelota para no seguir sumando
         actualizarBotonIniciar();
         limpiarEfectosPowerUp();
+
+        // borramos cualquier cartel previo
+        Entidad.entidades = Entidad.entidades.filter(e => !(e instanceof Cartel));
+
         if (j.puntos >= 10) new Cartel("¡GANÓ NACIONAL!", 0, 2);
         else new Cartel("¡GANÓ EL RIVAL!", 0, 4);
         return;
@@ -822,7 +883,7 @@ function anotarGol (mensaje)
     // Reinicia posiciones de pelota y paletas al centro
     reset();
 
-    //cuenta de espera de 2 segundos
+    // cuenta de espera de 2 segundos
     tiempoEsperaGol = 120;
     mensajeGol = mensaje;
 }
@@ -861,10 +922,10 @@ function dibujaCancha ()
     const centerX = width / 2;
     const centerY = fy1 + (fy2 - fy1) / 2;
 
-    //Escudo en el centro de la cancha
+    // Escudo en el centro de la cancha (imagen con opacidad)
     if (imgEscudo.complete && imgEscudo.naturalWidth !== 0) {
         ctx.save();
-        ctx.globalAlpha = 0.16;
+        ctx.globalAlpha = 0.32;
         const tamEscudo = 125;
         ctx.drawImage(imgEscudo, centerX - tamEscudo / 2, centerY - tamEscudo / 2, tamEscudo, tamEscudo);
         ctx.restore();
