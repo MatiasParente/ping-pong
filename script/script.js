@@ -38,7 +38,7 @@ imgPelota.src = 'imagenes/pelota.png';
 const imgEscudo = new Image();
 imgEscudo.src = 'imagenes/Escudo_del_Club_Nacional_de_Football.svg.png';
 
-// Imágenes para los Power-ups
+// imagenes para los Power-ups
 const imgMejia = new Image();
 imgMejia.src = 'imagenes/mejia.jpg';
 
@@ -101,7 +101,7 @@ function rectFill (x1, y1, x2, y2, color)
     );
 }
 
-//dibujamos la pelota (circulo)
+//dibujamos la pelota
 function circFill (x, y, r, color)
 {
     ctx.fillStyle = colores[ color ];
@@ -197,7 +197,7 @@ class Control
     }
 }
 
-// Efecto de cámara
+// Efecto de camaara
 class Camara 
 {
     #x = 0;
@@ -356,7 +356,7 @@ class Jugador extends Entidad
         if (btn(this.tecArriba)) this.dy = -this.vel;
         if (btn(this.tecAbajo)) this.dy = this.vel;
         
-        // Evita que la paleta salga de los límites del campo
+        // Evita que la paleta salga de los limites del campo
         if (this.y < area.y1)
         {
             this.y = area.y1;
@@ -443,7 +443,7 @@ let timeoutEfectoPowerUp = null;
 let mensajePowerUp = '';
 let tiempoMensajePowerUp = 0;
 
-//cantidad máxima de power-ups que pueden estar en pantalla a la vez
+//cantidad maxima de powerups que pueden estar en pantalla a la vez
 const MAX_POWERUPS = 1;
 
 function mostrarMensajePowerUp (texto)
@@ -511,11 +511,11 @@ class PowerUp extends Entidad
         }
         else if (this.tipo === 'maxi')
         {
-            // tiro potente hacia adelante
             limpiarEfectosPowerUp();
+            pelota.velPreviaMaxi = pelota.vel;
             const dirX = Math.sign(pelota.dx) || (pelota.x < width / 2 ? 1 : -1);
             pelota.tiroMaxi = true;
-            pelota.dx = dirX * 16; // tiro x16
+            pelota.dx = dirX * 16;
             pelota.dy = (Math.random() * 6 - 3);
             mostrarMensajePowerUp('¡TIRO DE MAXI!');
         }
@@ -547,7 +547,7 @@ class PowerUp extends Entidad
 
         ctx.save();
 
-        // Resplandor exterior característico de cada power-up
+        // Resplandor exterior característico de cada powerup
         ctx.beginPath();
         ctx.arc(cx, cy, r + 4, 0, Math.PI * 2);
         if (this.tipo === 'mejia') ctx.fillStyle = '#00f0ff'; //hielo
@@ -619,6 +619,7 @@ class Pelota extends Entidad
             x1: 2, y1: 2, x2: 28, y2: 28
         };
         this.vel = 4.5;
+        this.velPreviaMaxi = 4.5;
         this.rotacion = 0;
         this.congelada = false;
         this.enTurbo = false;
@@ -699,12 +700,12 @@ class Pelota extends Entidad
             this.dy = -Math.abs(this.dy);                        
         }
 
-        // Colisión con otras entidades
+        // Colision con otras entidades
         for (const e of Entidad.entidades)
         {
             if (e === this) continue;
 
-            // Colisión con habilidad
+            // Colision con habilidad
             if (e instanceof PowerUp && colision(this, e))
             {
                 e.activar(this);
@@ -722,7 +723,8 @@ class Pelota extends Entidad
         this.y = area.y1 + (area.y2 - area.y1) / 2 - this.height / 2;
         this.dx = 0;
         this.dy = 0;   
-        this.vel = 4.5; // restablecer velocidad con el gol
+        this.vel = 4.5;
+        this.velPreviaMaxi = 4.5;
         this.congelada = false;
         this.enTurbo = false;
         this.tiroMaxi = false;
@@ -730,45 +732,69 @@ class Pelota extends Entidad
 
     onColision (entidad)
     {
-        // si choca contra una paleta
         if (entidad instanceof Jugador)
         {
-            // si venia del tiro de maxi, vuelve a la velocidad normal
+            const overlapX = Math.min(this.x + this.width, entidad.x + entidad.width) - Math.max(this.x, entidad.x);
+            const overlapY = Math.min(this.y + this.height, entidad.y + entidad.height) - Math.max(this.y, entidad.y);
+
+            const esFrontalJ1 = (entidad.x < width / 2) && (this.dx < 0) && (this.x + this.width / 2 >= entidad.x + entidad.width / 2);
+            const esFrontalJ2 = (entidad.x >= width / 2) && (this.dx > 0) && (this.x + this.width / 2 <= entidad.x + entidad.width / 2);
+            const esGolpeFrontal = (overlapX <= overlapY) && (esFrontalJ1 || esFrontalJ2);
+
+            if (!esGolpeFrontal)
+            {
+                const pegaArriba = (this.y + this.height / 2 < entidad.y + entidad.height / 2);
+                if (pegaArriba)
+                {
+                    this.dy = -Math.max(Math.abs(this.dy), Math.abs(entidad.dy || 0) + 2);
+                    this.y = entidad.y - this.height - 2;
+                }
+                else
+                {
+                    this.dy = Math.max(Math.abs(this.dy), Math.abs(entidad.dy || 0) + 2);
+                    this.y = entidad.y + entidad.height + 2;
+                }
+
+                sonido(0);
+
+                if (entidad.onColision !== undefined)
+                {
+                    entidad.onColision(this);
+                }
+                return;
+            }
+
             if (this.tiroMaxi)
             {
                 this.tiroMaxi = false;
-                this.vel = 4.5;
+                this.vel = this.velPreviaMaxi || 4.5;
             }
             else if (!this.enTurbo && !this.congelada)
             {
-                this.vel *= 1.05; // aumenta un poco la velocidad
+                this.vel *= 1.05;
             }
 
-            const velocidad = this.enTurbo ? this.vel * 1.8 : this.vel;
+            const velTotal = this.enTurbo ? this.vel * 1.8 : this.vel;
+            const dirX = (entidad.x < width / 2) ? 1 : -1;
 
-            // calculamos el punto de impacto relativo al centro de la paleta
             const centroPelota = this.y + this.height / 2;
             const centroPaleta = entidad.y + entidad.height / 2;
             let impacto = (centroPelota - centroPaleta) / (entidad.height / 2);
             impacto = Math.max(-1, Math.min(1, impacto));
 
-            // si va muy recta al medio, le damos inclinacion para no quedar en bucle
-            if (Math.abs(impacto) < 0.25)
+            if (Math.abs(this.dy) < 1.0)
             {
-                impacto = impacto >= 0 ? 0.35 : -0.35;
+                this.dy = (impacto !== 0 ? Math.sign(impacto) : (Math.random() > 0.5 ? 1 : -1)) * 1.6;
+            }
+            else
+            {
+                this.dy += impacto * 1.2;
             }
 
-            // direccion horizontal hacia afuera de la paleta
-            const dirX = (this.x < entidad.x) ? -1 : 1;
+            const maxDy = velTotal * 0.72;
+            this.dy = Math.max(-maxDy, Math.min(maxDy, this.dy));
+            this.dx = dirX * Math.sqrt(Math.max(4, velTotal * velTotal - this.dy * this.dy));
 
-            // angulo de inclinacion segun donde pego
-            const maxAngulo = Math.PI * 0.32;
-            const angulo = impacto * maxAngulo;
-
-            this.dx = dirX * velocidad * Math.cos(angulo);
-            this.dy = velocidad * Math.sin(angulo);
-
-            // evitamos que la pelota quede adentro de la paleta
             if (dirX === 1)
             {
                 this.x = entidad.x + entidad.width + 1;
@@ -787,7 +813,6 @@ class Pelota extends Entidad
             return;
         }
 
-        // rebote comun para otras cosas
         let dy_actual = this.dy;
         this.y -= this.dy; 
 
